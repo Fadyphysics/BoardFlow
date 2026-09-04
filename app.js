@@ -15,6 +15,10 @@ const CDN_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.w
         s.onerror = () => { failed = true; document.getElementById('fatal').classList.remove('hidden'); };
         document.head.appendChild(s);
     });
+    document.addEventListener('pointerdown', event => {
+        if (event.target.closest('#geometryToolRail, #geometryInsight')) return;
+        if (selectedNatHit && !event.target.closest('canvas')) closeGeometryTools();
+    });
 })();
 
 function startApp(usedCDN) {
@@ -813,8 +817,8 @@ window.addEventListener('blur', () => { inkErasing = false; spaceDown = false; }
 canvas.on('mouse:down', opt => {
     if (spaceDown) { panning = true; canvas.selection = false; canvas.setCursor('grabbing'); return; }
     if (angleLens && handleLensClick(opt.e)) return;
-    if (tool === 'select') handleAngleClick(opt.e);
     if (natClick(opt.e)) return;
+    if (selectedNatHit) closeGeometryTools();
     if (tool === 'eraserInk') { inkErasing = true; eraseSketchesAt(canvas.getPointer(opt.e)); return; }
     if (tool === 'arrow') { arrowStart = canvas.getPointer(opt.e); tempArrow = null; return; }
     if (tool === 'highlight') { hlStart = canvas.getPointer(opt.e); tempHl = null; return; }
@@ -1121,9 +1125,49 @@ let natEndpointCounter = 0;
 let natCrossingCounter = 0;
 const btnAngles = document.getElementById('btnAngles');
 const geometryToolRail = document.getElementById('geometryToolRail');
+const geometryInsight = document.getElementById('geometryInsight');
+let selectedNatHit = null;
 function setGeometryToolRailVisible(visible) {
     geometryToolRail.classList.toggle('hidden', !visible);
+    if (!visible) geometryInsight.classList.add('hidden');
 }
+function closeGeometryTools() {
+    selectedNatHit = null;
+    natRevealed.clear();
+    setGeometryToolRailVisible(false);
+    geometryToolRail.querySelectorAll('button.active').forEach(button => button.classList.remove('active'));
+    canvas.requestRenderAll();
+}
+function showGeometryInsight(title, text) {
+    geometryInsight.querySelector('h4').textContent = title;
+    geometryInsight.querySelector('p').textContent = text;
+    geometryInsight.classList.remove('hidden');
+}
+function runGeometryTool(tool, button) {
+    if (!selectedNatHit) return;
+    geometryToolRail.querySelectorAll('button.active').forEach(item => item.classList.remove('active'));
+    button.classList.add('active');
+    const angle = Math.round(selectedNatHit.deg);
+    const results = {
+        pairs: ['Angle relationships', `Selected angle: ${angle}°\nSupplementary: ${180 - angle}°\nComplementary: ${Math.max(0, 90 - angle)}°`],
+        vertical: ['Vertically opposite', `The opposite angle is also ${angle}°.`],
+        parallel: ['Parallel-line relationships', `Selected angle: ${angle}°\nSelect another crossing to compare corresponding angles.`],
+        triangle: ['Triangle angle sum', `Remaining triangle angles total ${180 - angle}°.`],
+        exercise: ['Missing-angle exercise', `180° − ${angle}° = ${180 - angle}°`],
+        trig: ['Trigonometry', `sin ${angle}° = ${Math.sin(angle * Math.PI / 180).toFixed(3)}\ncos ${angle}° = ${Math.cos(angle * Math.PI / 180).toFixed(3)}\ntan ${angle}° = ${Math.tan(angle * Math.PI / 180).toFixed(3)}`],
+        pythagoras: ['Pythagoras theorem', 'Select two sides of a right triangle to calculate the missing side.'],
+        area: ['Perimeter and area', 'Select a closed shape to calculate its perimeter and area.'],
+        measure: ['Angle measurement', `Measured angle: ${angle}°`]
+    };
+    const result = results[tool];
+    if (result) showGeometryInsight(result[0], result[1]);
+}
+geometryToolRail.querySelectorAll('[data-geometry-tool]').forEach(button => {
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        runGeometryTool(button.dataset.geometryTool, button);
+    });
+});
 function updateAngleButton() {
     const hasArrows = canvas.getObjects().some(o => o.isArrow);
     btnAngles.classList.toggle('hidden', !hasArrows);
@@ -1132,6 +1176,7 @@ function updateAngleButton() {
 btnAngles.onclick = () => {
     natLessonVisible = !natLessonVisible;
     natRevealed.clear();
+    selectedNatHit = null;
     setGeometryToolRailVisible(false);
     canvas.requestRenderAll();
     updateAngleButton();
@@ -1176,17 +1221,23 @@ function natClick(e) {
     const rect = canvas.lowerCanvasEl.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
+    let nearest = null;
+    let nearestDistance = Infinity;
     for (const hit of natHits) {
         const dist = Math.sqrt((hit.x - clickX)**2 + (hit.y - clickY)**2);
-        // Include the nearby angle name so clicking either the circle or label selects it.
-        if (dist <= 42) {
-            natRevealed.has(hit.key) ? natRevealed.delete(hit.key) : natRevealed.add(hit.key);
-            setGeometryToolRailVisible(true);
-            canvas.requestRenderAll();
-            return true;
+        if (dist <= 18 && dist < nearestDistance) {
+            nearest = hit;
+            nearestDistance = dist;
         }
     }
-    return false;
+    if (!nearest) return false;
+    selectedNatHit = nearest;
+    natRevealed.clear();
+    natRevealed.add(nearest.key);
+    setGeometryToolRailVisible(true);
+    geometryInsight.classList.add('hidden');
+    canvas.requestRenderAll();
+    return true;
 }
 
 canvas.on('after:render', () => {
@@ -1328,7 +1379,7 @@ canvas.on('after:render', () => {
                         
                         ctx.save();
                         ctx.translate(circle.x, circle.y);
-                        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+                        ctx.fillStyle = selectedNatHit && selectedNatHit.key === key ? col : 'rgba(255,255,255,0.95)';
                         ctx.strokeStyle = col;
                         ctx.lineWidth = 2;
                         ctx.beginPath();

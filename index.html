@@ -83,6 +83,10 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
 #geometryToolRail button { width:34px; height:34px; padding:0; display:grid; place-items:center; font-size:17px; border-color:#4b4b4b; }
 #geometryToolRail button:hover { background:#007acc; border-color:#007acc; }
 #geometryToolRail button:focus-visible { outline:2px solid #4daafc; outline-offset:2px; }
+#geometryToolRail button.active { background:#007acc; border-color:#007acc; }
+#geometryInsight { position:absolute; top:50%; right:66px; transform:translateY(-50%); z-index:60; width:245px; padding:12px; background:#252526f7; border:1px solid #3c3c3c; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.35); font-size:12px; line-height:1.45; }
+#geometryInsight h4 { margin:0 0 6px; color:#fff; font-size:13px; }
+#geometryInsight p { margin:0; color:#ccc; white-space:pre-line; }
 </style>
 </head>
 <body>
@@ -264,16 +268,17 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
     <input type="file" id="fileInput" accept=".pdf,image/*,.boardview,.json" hidden>
 </div>
 <div id="geometryToolRail" class="hidden" aria-label="Geometry tools">
-    <button type="button" title="Supplementary and complementary angles" aria-label="Supplementary and complementary angles">∠</button>
-    <button type="button" title="Vertically opposite angles" aria-label="Vertically opposite angles">↔</button>
-    <button type="button" title="Parallel-line transversal relationships" aria-label="Parallel-line transversal relationships">∥</button>
-    <button type="button" title="Triangle angle sum" aria-label="Triangle angle sum">△</button>
-    <button type="button" title="Missing-angle exercise" aria-label="Missing-angle exercise">?</button>
-    <button type="button" title="Sine, cosine, and tangent" aria-label="Sine, cosine, and tangent">sin</button>
-    <button type="button" title="Pythagoras theorem" aria-label="Pythagoras theorem">√</button>
-    <button type="button" title="Perimeter and area" aria-label="Perimeter and area">▱</button>
-    <button type="button" title="Interactive angle measurement" aria-label="Interactive angle measurement">⌒</button>
+    <button type="button" data-geometry-tool="pairs" title="Supplementary and complementary angles" aria-label="Supplementary and complementary angles">∠</button>
+    <button type="button" data-geometry-tool="vertical" title="Vertically opposite angles" aria-label="Vertically opposite angles">↔</button>
+    <button type="button" data-geometry-tool="parallel" title="Parallel-line transversal relationships" aria-label="Parallel-line transversal relationships">∥</button>
+    <button type="button" data-geometry-tool="triangle" title="Triangle angle sum" aria-label="Triangle angle sum">△</button>
+    <button type="button" data-geometry-tool="exercise" title="Missing-angle exercise" aria-label="Missing-angle exercise">?</button>
+    <button type="button" data-geometry-tool="trig" title="Sine, cosine, and tangent" aria-label="Sine, cosine, and tangent">sin</button>
+    <button type="button" data-geometry-tool="pythagoras" title="Pythagoras theorem" aria-label="Pythagoras theorem">√</button>
+    <button type="button" data-geometry-tool="area" title="Perimeter and area" aria-label="Perimeter and area">▱</button>
+    <button type="button" data-geometry-tool="measure" title="Interactive angle measurement" aria-label="Interactive angle measurement">⌒</button>
 </div>
+<div id="geometryInsight" class="hidden" role="status" aria-live="polite"><h4>Geometry Insight</h4><p></p></div>
 
 <div id="dialog" class="modal hidden">
     <div class="modal-box">
