@@ -11,7 +11,7 @@ const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 const panel = el('mathPanel');
 el('btnMath').onclick = () => panel.classList.toggle('hidden');
 el('mathClose').onclick = () => panel.classList.add('hidden');
-const tabs = { mTabGraph: 'secGraph', mTabTrig: 'secTrig', mTabAlg: 'secAlg', mTabStat: 'secStat' };
+const tabs = { mTabGraph: 'secGraph', mTabAlg: 'secAlg', mTabStat: 'secStat' };
 function activateTab(id) {
     Object.keys(tabs).forEach(t => { const b = el(t); if (b) b.classList.toggle('active', t === id); });
     Object.keys(tabs).forEach(t => { const s = el(tabs[t]); if (s) s.classList.toggle('on', tabs[t] === tabs[id]); });
@@ -379,81 +379,6 @@ el('gTable').onclick = () => {
     BF.insertCanvas(cnv);
 };
 
-// ================= TRIG tab =================
-let lastTri = null;
-el('tSolve').onclick = () => {
-    const v = id => { const x = parseFloat(el(id).value); return isFinite(x) && x > 0 ? x : null; };
-    let a = v('tA'), b = v('tB'), c = v('tC'), A = v('tAngA'), B = v('tAngB');
-    const bad = msg => { el('tResult').textContent = msg; lastTri = null; };
-    if (a && b && !c) { c = Math.hypot(a, b); A = Math.atan2(a, b) * R2D; B = 90 - A; }
-    else if (a && c) { if (c <= a) return bad('Hypotenuse c must be the longest.'); b = Math.sqrt(c * c - a * a); A = Math.asin(a / c) * R2D; B = 90 - A; }
-    else if (b && c) { if (c <= b) return bad('Hypotenuse c must be the longest.'); a = Math.sqrt(c * c - b * b); B = Math.asin(b / c) * R2D; A = 90 - B; }
-    else if (a && A) { B = 90 - A; c = a / Math.sin(A * D2R); b = a / Math.tan(A * D2R); }
-    else if (a && B) { A = 90 - B; b = a * Math.tan(B * D2R); c = a / Math.sin(A * D2R); }
-    else if (b && A) { B = 90 - A; a = b * Math.tan(A * D2R); c = b / Math.cos(A * D2R); }
-      else if (b && B) { A = 90 - B; a = b / Math.tan(B * D2R); c = b / Math.sin(B * D2R); }
-    else if (c && A) { B = 90 - A; a = c * Math.sin(A * D2R); b = c * Math.cos(A * D2R); }
-    else if (c && B) { A = 90 - B; b = c * Math.sin(B * D2R); a = c * Math.cos(B * D2R); }
-    else return bad('Fill any two values (at least one side).');
-    if (![a, b, c, A, B].every(isFinite)) return bad('Check your values.');
-    lastTri = { a: a, b: b, c: c, A: A, B: B };
-    el('tResult').textContent =
-        'a = ' + round2(a) + '   b = ' + round2(b) + '   c = ' + round2(c) +
-        '\nA = ' + round2(A) + '°   B = ' + round2(B) + '°   C = 90°' +
-        '\narea = ' + round2(a * b / 2);
-};
-function drawTri(ctx, W, H, t) {
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
-    const s = Math.min((W - 180) / t.a, (H - 150) / t.b);
-    const Cx = 90, Cy = H - 80, Bx = Cx + t.a * s, By = Cy, Ax = Cx, Ay = Cy - t.b * s;
-    ctx.strokeStyle = '#4363d8'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(Ax, Ay); ctx.lineTo(Bx, By); ctx.lineTo(Cx, Cy); ctx.closePath(); ctx.stroke();
-    ctx.lineWidth = 1.5; ctx.strokeStyle = '#c33';
-    ctx.strokeRect(Cx + 2, Cy - 16, 14, 14);
-    ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif';
-    ctx.fillText('a=' + round2(t.a), (Cx + Bx) / 2 - 20, Cy + 22);
-    ctx.fillText('b=' + round2(t.b), Cx - 78, (Cy + Ay) / 2);
-    ctx.fillText('c=' + round2(t.c), (Ax + Bx) / 2 + 12, (Ay + By) / 2 - 8);
-    ctx.fillStyle = '#c33';
-    ctx.fillText('A=' + round2(t.A) + '°', Ax + 10, Ay + 26);
-    ctx.fillText('B=' + round2(t.B) + '°', Bx - 74, By - 12);
-    ctx.fillStyle = '#333';
-    ctx.fillText('A', Ax - 16, Ay + 4); ctx.fillText('B', Bx + 8, By + 4); ctx.fillText('C', Cx - 16, Cy + 6);
-}
-el('tInsert').onclick = () => {
-    if (!lastTri) return;
-    const cnv = document.createElement('canvas'); cnv.width = 700; cnv.height = 500;
-    drawTri(cnv.getContext('2d'), 700, 500, lastTri);
-    BF.insertCanvas(cnv);
-};
-function drawUnit(ctx, W, H, th) {
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
-    const cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 26;
-    ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(8, cy); ctx.lineTo(W - 8, cy); ctx.moveTo(cx, 8); ctx.lineTo(cx, H - 8); ctx.stroke();
-    ctx.strokeStyle = '#4363d8'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 2 * Math.PI); ctx.stroke();
-    const t = th * D2R, px = cx + Math.cos(t) * R, py = cy - Math.sin(t) * R;
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
-    ctx.strokeStyle = '#e6194b'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, cy); ctx.stroke();
-    ctx.strokeStyle = '#3cb44b';
-    ctx.beginPath(); ctx.moveTo(px, cy); ctx.lineTo(px, py); ctx.stroke();
-    ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(px, py, 4, 0, 7); ctx.fill();
-    ctx.font = 'bold 12px sans-serif';
-    ctx.fillStyle = '#e6194b'; ctx.fillText('cos = ' + round2(Math.cos(t)), 10, H - 26);
-    ctx.fillStyle = '#3cb44b'; ctx.fillText('sin = ' + round2(Math.sin(t)), 10, H - 10);
-    ctx.fillStyle = '#4363d8'; ctx.fillText('tan = ' + (Math.abs(Math.cos(t)) < 0.01 ? '∞' : round2(Math.tan(t))), 130, H - 10);
-    ctx.fillStyle = '#333'; ctx.fillText('θ = ' + th + '°', 10, 16);
-}
-el('uTheta').addEventListener('input', () => { el('uVal').textContent = el('uTheta').value + '°'; drawUnit(el('uPreview').getContext('2d'), 320, 200, +el('uTheta').value); });
-el('uInsert').onclick = () => {
-    const cnv = document.createElement('canvas'); cnv.width = 700; cnv.height = 500;
-    drawUnit(cnv.getContext('2d'), 700, 500, +el('uTheta').value);
-    BF.insertCanvas(cnv);
-};
-
 // ================= ALGEBRA tab =================
 el('qSolve').onclick = () => {
     const A = +el('qA').value, B = +el('qB').value, C = +el('qC').value;
@@ -599,6 +524,5 @@ el('stInsert').onclick = () => {
 };
 
 refreshGraph();
-drawUnit(el('uPreview').getContext('2d'), 320, 200, 45);
 }
 })();

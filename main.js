@@ -11,6 +11,21 @@ function createWindow() {
         title: 'BoardFlow'
     });
     win.loadFile('index.html');
+    let closing = false;
+    win.on('close', event => {
+        if (closing) return;
+        event.preventDefault();
+        win.webContents.executeJavaScript('window.boardFlowRequestClose ? window.boardFlowRequestClose() : true')
+            .then(canClose => {
+                if (!canClose) return;
+                closing = true;
+                win.close();
+            })
+            .catch(() => {
+                closing = true;
+                win.close();
+            });
+    });
 }
 
 app.whenReady().then(createWindow);

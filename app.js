@@ -59,6 +59,8 @@ resizeCanvas();
 const MAX_HISTORY = 50;
 const undoStack = [], redoStack = [];
 let snapshotTimer = null, suppressHistory = false, applying = false;
+let checkpointTimer = null;
+let lastUploadedFile = null;
 function annotationsJSON() {
     return JSON.stringify(canvas.getObjects().filter(o => !o.isFile).map(o => o.toJSON(['isSketch', 'isTriangle', 'angleShow'])));
 }
@@ -94,7 +96,7 @@ function applyAnnotationStateAsync(stateStr) {
 }
 function undo() { if (undoStack.length < 2 || applying) return; redoStack.push(undoStack.pop()); applyAnnotationStateAsync(undoStack[undoStack.length - 1]); }
 function redo() { if (!redoStack.length || applying) return; const s = redoStack.pop(); undoStack.push(s); applyAnnotationStateAsync(s); }
-function historyTrigger(e) { if (suppressHistory) return; if (e.target && e.target.isFile) return; queueSnapshot(); }
+function historyTrigger(e) { if (suppressHistory) return; if (e.target && e.target.isFile) return; queueSnapshot(); scheduleCheckpoint(); }
 canvas.on('object:added', historyTrigger);
 canvas.on('object:added', () => applyInteractivity());
 canvas.on('object:added', () => applyInteractivity());
@@ -106,6 +108,10 @@ canvas.on('object:modified', e => {
         o.set({ width: o.width * o.scaleX, fontSize: o.fontSize * o.scaleY, scaleX: 1, scaleY: 1 });
     }
 });
+function scheduleCheckpoint() {
+    clearTimeout(checkpointTimer);
+    checkpointTimer = setTimeout(() => saveCheckpoint().catch(error => console.error('Unable to auto-save checkpoint', error)), 500);
+}
 document.getElementById('btnUndo').onclick = undo;
 document.getElementById('btnRedo').onclick = redo;
 
@@ -747,11 +753,11 @@ function setHudPos(pos) {
 }
 setHudPos(loadPref('bv-hud') || 'top');
 let hudDrag = null, suppressMenuClick = false;
-btnMenu.addEventListener('pointerdown', e => { hudDrag = { x: e.clientX, y: e.clientY, moved: false }; btnMenu.setPointerCapture(e.pointerId); });
+btnMenu.addEventListener('pointerdown', e => { e.preventDefault(); hudDrag = { x: e.clientX, y: e.clientY, moved: false }; btnMenu.setPointerCapture(e.pointerId); });
 btnMenu.addEventListener('pointermove', e => {
     if (!hudDrag) return;
     if (!hudDrag.moved && Math.hypot(e.clientX - hudDrag.x, e.clientY - hudDrag.y) > 8) { hudDrag.moved = true; hideMenuNow(); }
-    if (hudDrag.moved) { hud.style.left = e.clientX + 'px'; hud.style.top = e.clientY + 'px'; hud.style.bottom = 'auto'; }
+    if (hudDrag.moved) { e.preventDefault(); hud.style.left = e.clientX + 'px'; hud.style.top = e.clientY + 'px'; hud.style.bottom = 'auto'; }
 });
 btnMenu.addEventListener('pointerup', e => {
     if (hudDrag && hudDrag.moved) { setHudPos(e.clientY > window.innerHeight / 2 ? 'bottom' : 'top'); suppressMenuClick = true; }
@@ -761,11 +767,12 @@ btnPenQuick.onclick = () => setTool('pen');
 function updateQuickPen() { btnPenQuick.classList.toggle('hidden', !(tool !== 'pen' && menu.classList.contains('hidden'))); }
 
 // ================= Menu auto-hide =================
-const HIDE_DELAY = 10000;
+const HIDE_DELAY = 6000;
 let hideTimer = null;
 function armHide() { clearTimeout(hideTimer); hideTimer = setTimeout(hideMenuNow, HIDE_DELAY); }
-function showMenu() { menu.classList.remove('hidden'); btnMenu.classList.add('open'); updateQuickPen(); armHide(); }
-function hideMenuNow() { clearTimeout(hideTimer); menu.classList.add('hidden'); btnMenu.classList.remove('open'); updateQuickPen(); }
+function showMenu() { menu.classList.remove('hidden'); hud.classList.remove('menu-closed'); btnMenu.classList.add('open'); updateQuickPen(); armHide(); }
+function hideMenuNow() { clearTimeout(hideTimer); menu.classList.add('hidden'); hud.classList.add('menu-closed'); btnMenu.classList.remove('open'); updateQuickPen(); }
+hud.classList.toggle('menu-closed', menu.classList.contains('hidden'));
 btnMenu.onclick = () => {
     if (suppressMenuClick) { suppressMenuClick = false; return; }
     menu.classList.contains('hidden') ? showMenu() : hideMenuNow();
@@ -777,6 +784,10 @@ const AUTO_HIDE_IDS = ['btnSelect', 'btnPen', 'btnArrow', 'btnText', 'btnEraserI
     'shapeTriangle', 'shapeSquare', 'shapeCircle', 'btnRuler', 'btnProtractor', 'btnSticky',
     'hlYellow', 'hlPink', 'hlPist'];
 menu.addEventListener('click', e => { if (AUTO_HIDE_IDS.includes(e.target.id)) setTimeout(hideMenuNow, 1000); });
+document.addEventListener('pointerdown', e => {
+    if (menu.classList.contains('hidden')) return;
+    if (!e.target.closest('#menu, #btnMenu')) hideMenuNow();
+}, true);
 
 // ================= Keyboard / mouse core =================
 let spaceDown = false, panning = false;
@@ -930,17 +941,14 @@ fileInput.onchange = async e => {
     e.target.value = '';
     if (!file) return;
     if (/\.(boardview|json)$/i.test(file.name)) { await openBoardFile(file); return; }
-    if (hasInk()) {
-        const ans = await askSaveChanges();
-        if (ans === 'cancel') return;
-        if (ans === 'save') exportPNG();
-    }
     suppressHistory = true;
     closeCurrentFile();
     removeAnnotationsSilent();
     suppressHistory = false;
     await openFile(file);
+    lastUploadedFile = { name: file.name, type: file.type, data: await file.arrayBuffer() };
     resetHistory();
+    await saveCheckpoint();
 };
 async function openFile(file) {
     const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
@@ -975,11 +983,6 @@ async function openBoardFile(file) {
         data = JSON.parse(await file.text());
         if ((data.app !== 'BoardFlow' && data.app !== 'BoardView') || !data.objects) throw new Error('bad');
     } catch (err) { return; }
-    if (hasInk()) {
-        const ans = await askSaveChanges();
-        if (ans === 'cancel') return;
-        if (ans === 'save') exportPNG();
-    }
     suppressHistory = true;
     closeCurrentFile();
     removeAnnotationsSilent();
@@ -1008,15 +1011,6 @@ async function openBoardFile(file) {
 btnPrev.onclick = () => flipPage(-1);
 btnNext.onclick = () => flipPage(1);
 function memKey(bp, pp) { return bp + ':' + pp; }
-async function stashOrPrompt(keepKey) {
-    if (hasInk()) {
-        const ans = await askSaveChanges();
-        if (ans === 'cancel') return false;
-        if (ans === 'save') { exportPNG(); pageMemory.set(keepKey, annotationsJSON()); }
-        else pageMemory.delete(keepKey);
-    } else pageMemory.delete(keepKey);
-    return true;
-}
 async function swapAnnotations(newKey) {
     suppressHistory = true;
     canvas.discardActiveObject();
@@ -1030,48 +1024,21 @@ async function flipPage(delta) {
     if (!pdfDoc) return;
     const n = pageNum + delta;
     if (n < 1 || n > pdfDoc.numPages) return;
-    if (!await stashOrPrompt(memKey(boardPage, pageNum))) return;
-    await showPage(n);
-    await swapAnnotations(memKey(boardPage, n));
-}
-function memKey(bp, pp) { return bp + ':' + pp; }
-async function stashOrPrompt(keepKey) {
-    if (hasInk()) {
-        const ans = await askSaveChanges();
-        if (ans === 'cancel') return false;
-        if (ans === 'save') { exportPNG(); pageMemory.set(keepKey, annotationsJSON()); }
-        else pageMemory.delete(keepKey);
-    } else pageMemory.delete(keepKey);
-    return true;
-}
-async function swapAnnotations(newKey) {
-    suppressHistory = true;
-    canvas.discardActiveObject();
-    removeAnnotationsSilent();
-    suppressHistory = false;
-    const saved = pageMemory.get(newKey);
-    if (saved) await applyAnnotationStateAsync(saved);
-    resetHistory();
-}
-async function flipPage(delta) {
-    if (!pdfDoc) return;
-    const n = pageNum + delta;
-    if (n < 1 || n > pdfDoc.numPages) return;
-    if (!await stashOrPrompt(memKey(boardPage, pageNum))) return;
+    stashPage(memKey(boardPage, pageNum));
     await showPage(n);
     await swapAnnotations(memKey(boardPage, n));
 }
 async function flipBoard(delta) {
     const n = boardPage + delta;
     if (n < 0 || n >= boardPages) return;
-    if (!await stashOrPrompt(memKey(boardPage, pageNum))) return;
+    stashPage(memKey(boardPage, pageNum));
     boardPage = n;
     updateBoardPager();
     await swapAnnotations(memKey(n, pageNum));
 }
 function addBoardPage() {
     (async () => {
-        if (!await stashOrPrompt(memKey(boardPage, pageNum))) return;
+        stashPage(memKey(boardPage, pageNum));
         boardPages += 1;
         boardPage = boardPages - 1;
         updateBoardPager();
@@ -1090,13 +1057,35 @@ const _bp1 = document.getElementById('btnBPrev'); if (_bp1) _bp1.onclick = () =>
 const _bp2 = document.getElementById('btnBNext'); if (_bp2) _bp2.onclick = () => flipBoard(1);
 const _bp3 = document.getElementById('btnBAdd'); if (_bp3) _bp3.onclick = addBoardPage;
 const _np = document.getElementById('btnNewPage'); if (_np) _np.onclick = addBoardPage;
+function stashPage(key) {
+    if (hasInk()) pageMemory.set(key, annotationsJSON());
+    else pageMemory.delete(key);
+    scheduleCheckpoint();
+}
 // ================= Export / dialog =================
-function exportPNG() {
+async function exportPNG() {
     canvas.discardActiveObject();
     canvas.requestRenderAll();
+    const filename = 'boardflow-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.png';
+    const dataUrl = canvas.toDataURL({ format: 'png' });
+    if (activeSubjectFolder) {
+        try {
+            const permission = await activeSubjectFolder.requestPermission({ mode: 'readwrite' });
+            if (permission === 'granted') {
+                const blob = await fetch(dataUrl).then(response => response.blob());
+                const fileHandle = await activeSubjectFolder.getFileHandle(filename, { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                return;
+            }
+        } catch (error) {
+            console.error('Unable to save board in the subject folder', error);
+        }
+    }
     const a = document.createElement('a');
-    a.download = 'boardflow-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.png';
-    a.href = canvas.toDataURL({ format: 'png' });
+    a.download = filename;
+    a.href = dataUrl;
     a.click();
 }
 const dlg = document.getElementById('dialog');
@@ -1110,6 +1099,189 @@ function askSaveChanges() {
         document.getElementById('dlgCancel').onclick = () => done('cancel');
     });
 }
+window.boardFlowRequestClose = async function () {
+    if (!hasInk()) return true;
+    const text = document.getElementById('saveDialogText');
+    if (text) text.textContent = boardPages > 1 ? 'Save changes to this board or all pages before closing?' : 'Save changes before closing?';
+    const ans = await askSaveChanges();
+    if (ans === 'save') await exportPNG();
+    return ans !== 'cancel';
+};
+
+// ================= Subjects workspace =================
+const subjectPanel = document.getElementById('subjPanel');
+const subjectList = document.getElementById('subjList');
+const subjectNameInput = document.getElementById('subjName');
+const subjectFolderInput = document.getElementById('subjFolder');
+const subjectFolderStatus = document.getElementById('subjFolderStatus');
+const subjectSuggestions = document.getElementById('subjectSuggestions');
+const subjectStore = 'boardflow-subjects';
+let selectedSubjectFolder = null;
+let activeSubjectId = null;
+let activeSubjectFolder = null;
+function readSubjects() {
+    try { return JSON.parse(localStorage.getItem(subjectStore) || '[]'); }
+    catch (error) { console.error('Unable to read subjects', error); return []; }
+}
+function writeSubjects(subjects) {
+    localStorage.setItem(subjectStore, JSON.stringify(subjects));
+}
+function subjectDatabase() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('boardflow-library', 3);
+        request.onupgradeneeded = () => {
+            if (!request.result.objectStoreNames.contains('books')) request.result.createObjectStore('books');
+            if (!request.result.objectStoreNames.contains('folders')) request.result.createObjectStore('folders');
+            if (!request.result.objectStoreNames.contains('checkpoint')) request.result.createObjectStore('checkpoint');
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+async function saveCheckpoint() {
+    if (!lastUploadedFile) return;
+    stashPage(memKey(boardPage, pageNum));
+    const db = await subjectDatabase();
+    const checkpoint = {
+        file: lastUploadedFile,
+        pageNum,
+        boardPage,
+        boardPages,
+        memory: Object.fromEntries(pageMemory),
+        annotations: annotationsJSON(),
+        viewport: canvas.viewportTransform,
+        theme,
+        grid: showGrid
+    };
+    await new Promise((resolve, reject) => {
+        const request = db.transaction('checkpoint', 'readwrite').objectStore('checkpoint').put(checkpoint, 'last');
+        request.onsuccess = resolve;
+        request.onerror = () => reject(request.error);
+    });
+    db.close();
+}
+async function readCheckpoint() {
+    const db = await subjectDatabase();
+    const checkpoint = await new Promise((resolve, reject) => {
+        const request = db.transaction('checkpoint').objectStore('checkpoint').get('last');
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return checkpoint;
+}
+async function restoreCheckpoint() {
+    const checkpoint = await readCheckpoint();
+    if (!checkpoint || !checkpoint.file) return;
+    const file = new File([checkpoint.file.data], checkpoint.file.name, { type: checkpoint.file.type });
+    lastUploadedFile = checkpoint.file;
+    suppressHistory = true;
+    closeCurrentFile();
+    removeAnnotationsSilent();
+    await openFile(file);
+    pageNum = checkpoint.pageNum || 1;
+    if (pdfDoc && pageNum > 1) await showPage(pageNum);
+    boardPage = checkpoint.boardPage || 0;
+    boardPages = checkpoint.boardPages || 1;
+    pageMemory.clear();
+    if (checkpoint.memory) Object.entries(checkpoint.memory).forEach(([key, value]) => pageMemory.set(key, value));
+    await applyAnnotationStateAsync(checkpoint.annotations || pageMemory.get(memKey(boardPage, pageNum)) || '[]');
+    if (checkpoint.viewport && checkpoint.viewport.length === 6) canvas.setViewportTransform(checkpoint.viewport);
+    theme = checkpoint.theme || theme;
+    showGrid = checkpoint.grid === undefined ? showGrid : !!checkpoint.grid;
+    applyTheme();
+    updateBoardPager();
+    updatePageUI();
+    suppressHistory = false;
+    resetHistory();
+}
+async function saveSubjectFolderHandle(id, handle) {
+    const db = await subjectDatabase();
+    await new Promise((resolve, reject) => {
+        const request = db.transaction('folders', 'readwrite').objectStore('folders').put(handle, id);
+        request.onsuccess = resolve;
+        request.onerror = () => reject(request.error);
+    });
+    db.close();
+}
+async function readSubjectFolderHandle(id) {
+    const db = await subjectDatabase();
+    const handle = await new Promise((resolve, reject) => {
+        const request = db.transaction('folders').objectStore('folders').get(id);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return handle;
+}
+function renderSubjects() {
+    const subjects = readSubjects();
+    subjectSuggestions.innerHTML = '';
+    subjects.forEach(subject => {
+        const option = document.createElement('option');
+        option.value = subject.name;
+        subjectSuggestions.appendChild(option);
+    });
+    subjectList.innerHTML = '';
+    if (!subjects.length) {
+        subjectList.innerHTML = '<div class="empty-state">No subjects yet. Add a subject and choose its lesson save folder.</div>';
+        return;
+    }
+    subjects.forEach(subject => {
+        const item = document.createElement('div');
+        item.className = 'subj-item';
+        item.innerHTML = `<span class="subj-name">📘 ${subject.name}<small style="display:block;color:#888;margin-top:4px">${subject.folderName || 'No save folder selected'}${subject.bookName ? ` · legacy book: ${subject.bookName}` : ''}</small></span><button class="subj-delete" type="button">Delete</button>`;
+        item.addEventListener('click', () => openSubject(subject.id));
+        item.querySelector('.subj-delete').addEventListener('click', event => {
+            event.stopPropagation();
+            const remaining = readSubjects().filter(entry => entry.id !== subject.id);
+            writeSubjects(remaining);
+            renderSubjects();
+        });
+        subjectList.appendChild(item);
+    });
+}
+async function openSubject(id) {
+    const subject = readSubjects().find(entry => entry.id === id);
+    if (!subject) return;
+    activeSubjectId = id;
+    activeSubjectFolder = await readSubjectFolderHandle(id);
+    subjectPanel.classList.add('hidden');
+}
+document.getElementById('btnSubjects').onclick = () => {
+    subjectPanel.classList.toggle('hidden');
+    if (!subjectPanel.classList.contains('hidden')) renderSubjects();
+};
+document.getElementById('subjClose').onclick = () => subjectPanel.classList.add('hidden');
+subjectFolderInput.onclick = async () => {
+    if (!window.showDirectoryPicker) {
+        subjectFolderStatus.textContent = 'Folder selection is not supported here. Open BoardFlow in Electron or a current Chromium browser.';
+        return;
+    }
+    try {
+        selectedSubjectFolder = await window.showDirectoryPicker({ mode: 'readwrite' });
+        subjectFolderStatus.textContent = `Save folder: ${selectedSubjectFolder.name}`;
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error('Unable to choose subject save folder', error);
+            subjectFolderStatus.textContent = 'Unable to choose that folder.';
+        }
+    }
+};
+document.getElementById('subjCreate').onclick = async () => {
+    const name = subjectNameInput.value.trim();
+    if (!name) { subjectNameInput.focus(); return; }
+    if (!selectedSubjectFolder) { subjectFolderInput.focus(); return; }
+    const id = 'subject-' + Date.now().toString(36);
+    const subjects = readSubjects();
+    subjects.push({ id, name, folderName: selectedSubjectFolder.name });
+    writeSubjects(subjects);
+    await saveSubjectFolderHandle(id, selectedSubjectFolder);
+    subjectNameInput.value = '';
+    selectedSubjectFolder = null;
+    subjectFolderStatus.textContent = 'Choose where this subject\'s lesson material will be saved. Files are uploaded separately with Upload File.';
+    renderSubjects();
+};
 
 // ================= Natural Angle Recognition (NAT) Module =================
 let natHits = [];
@@ -1513,5 +1685,5 @@ setTool('pen');
 showMenu();
 resetHistory();
 window.dispatchEvent(new Event('bf-ready'));
-
+setTimeout(() => restoreCheckpoint().catch(error => console.error('Unable to restore checkpoint', error)), 0);
 } // end startApp
