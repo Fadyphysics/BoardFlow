@@ -42,6 +42,10 @@ select, label, textarea { background:#2d2d2d; color:#eee; border:1px solid #555;
 textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; }
 
 #watermark { position:absolute; bottom:10px; right:10px; font-size:10px; color:#555; pointer-events:none; z-index:50; }
+#subjectLabel, #dateLabel { position:absolute; top:12px; z-index:50; color:#777; font-size:14px; line-height:18px; font-weight:400; pointer-events:none; white-space:nowrap; }
+#dateLabel sup { font-size:9px; line-height:0; vertical-align:super; }
+#subjectLabel { left:14px; }
+#dateLabel { right:14px; }
 
 .modal { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; z-index:100; }
 .modal-box { background:#252526; border:1px solid #3c3c3c; border-radius:8px; padding:20px; min-width:300px; max-width:90%; box-shadow:0 4px 20px rgba(0,0,0,.5); }
@@ -64,18 +68,21 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
 .mInsert { background:#007acc; border-color:#007acc; }
 .mInsert:hover { background:#0066aa; }
 
-#subjPanel { position:absolute; top:0; right:0; bottom:0; width:350px; z-index:40; background:#252526f7; border-left:1px solid #3c3c3c; padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; }
-#subjPanel h3 { margin:0 0 8px 0; font-size:15px; color:#ddd; display:flex; justify-content:space-between; align-items:center; }
+#subjPanel { position:fixed; top:42px; right:12px; width:350px; z-index:40; background:transparent; padding:0; overflow:visible; }
+#subjPanel h3 { display:none; }
 #subjClose { background:transparent; border:none; color:#aaa; font-size:20px; cursor:pointer; padding:0 4px; line-height:1; }
 #subjClose:hover { color:#fff; }
-#subjList { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
-.subj-item { background:#2d2d2d; border:1px solid #3c3c3c; border-radius:6px; padding:12px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all .2s; }
-.subj-item:hover { background:#333; border-color:#555; }
-.subj-name { font-weight:500; color:#fff; }
+#subjList { display:flex; flex-direction:column; align-items:flex-end; gap:7px; width:164px; margin-left:auto; }
+.subj-edit-toggle { width:164px; height:22px; background:linear-gradient(#858585, #5f5f5f); border:none; color:#eee; border-radius:7px; padding:2px 9px; cursor:pointer; font-size:10px; line-height:14px; text-align:left; box-shadow:0 3px 5px #0006, inset 0 1px 1px #ffffff55; }
+.subj-edit-toggle:hover { background:#777; color:#fff; }
+.subj-item { width:164px; min-height:22px; box-sizing:border-box; border:none; border-radius:7px; padding:2px 9px; cursor:pointer; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:4px; transition:all .2s; box-shadow:0 3px 5px #0006, inset 0 1px 1px #ffffff55; }
+.subj-item:hover { filter:brightness(1.12); transform:translateY(-1px); }
+.subj-name { width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; font-weight:600; color:#fff; text-shadow:0 1px 2px #0008; }
+.subj-color { width:30px; height:22px; padding:0; border:1px solid #fff; border-radius:5px; cursor:pointer; }
 .subj-delete { background:#c33; border-color:#c33; padding:4px 8px; font-size:11px; }
 .subj-delete:hover { background:#d44; }
 .empty-state { text-align:center; padding:30px 15px; color:#888; font-size:13px; line-height:1.6; }
-#subjForm { display:flex; flex-direction:column; gap:8px; background:#2d2d2d; padding:12px; border-radius:6px; border:1px solid #3c3c3c; }
+#subjForm { position:absolute; right:174px; top:0; width:280px; display:flex; flex-direction:column; gap:8px; background:#2d2d2df7; padding:12px; border-radius:6px; border:1px solid #3c3c3c; }
 #subjForm input[type="text"], #subjForm input[type="file"] { width:100%; padding:8px; background:#1e1e1e; border:1px solid #555; border-radius:4px; color:#eee; font-size:13px; }
 #subjForm button { width:100%; }
 
@@ -100,6 +107,18 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
 <body>
 <div id="canvasWrap">
     <canvas id="board"></canvas>
+    <div id="subjectLabel" class="hidden"></div>
+    <div id="dateLabel"><span id="dateMonth"></span>/<span id="dateDay"></span><sup id="dateOrdinal"></sup>/<span id="dateYear"></span></div>
+    <script>
+        (function () {
+            var now = new Date(), day = now.getDate();
+            var suffix = day % 10 === 1 && day % 100 !== 11 ? 'st' : day % 10 === 2 && day % 100 !== 12 ? 'nd' : day % 10 === 3 && day % 100 !== 13 ? 'rd' : 'th';
+            document.getElementById('dateMonth').textContent = now.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+            document.getElementById('dateDay').textContent = day;
+            document.getElementById('dateOrdinal').textContent = suffix;
+            document.getElementById('dateYear').textContent = now.getFullYear();
+        })();
+    </script>
     <div class="hud" id="hud">
         <button id="btnMenu" title="Toggle menu — hold & drag to move (top/bottom)"><span></span><span></span><span></span></button>
         <button id="btnAngles" class="chip hidden" title="Show angle lesson">∠</button>
@@ -115,6 +134,7 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
         </div>
     </div>
     <div id="menu" class="hidden">
+        <button id="btnSubjects" title="Open your teaching subjects">📚 Subjects</button>
         <button id="btnUpload" title="Open a PDF, an image, or a saved .boardview board">📂 Upload File</button>
         <button id="btnSaveBoard" title="Save the board as a PNG image — opens in any app">💾 Save Board</button>
         <button id="btnUndo" title="Undo (Ctrl+Z)">↩️</button>
@@ -147,7 +167,6 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
         
         <button id="btnSticky" title="Insert a yellow sticky note">🗒️</button>
         <button id="btnMath" title="Mathematics — graphs, algebra, statistics">🧮 Math</button>
-        <button id="btnSubjects" title="Open your teaching subjects">📚 Subjects</button>
         <button id="btnNewPage" title="Fresh board page (keeps previous pages)">📄 New Page</button>
         <button id="btnTimer" title="Countdown timer">⏱ Timer</button>
         <button id="btnSaveLesson" title="Save an editable lesson file (resume later)">💼 Lesson</button>
@@ -159,7 +178,7 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
     </div>
     <div id="subjPanel" class="hidden">
         <h3><span>📚 Subjects</span><button id="subjClose" title="Close">✕</button></h3>
-        <div id="subjForm">
+        <div id="subjForm" class="hidden">
             <input id="subjName" type="text" list="subjectSuggestions" placeholder="Subject name (e.g. Geometry)">
             <datalist id="subjectSuggestions"></datalist>
             <button id="subjFolder" type="button">Choose save folder</button>

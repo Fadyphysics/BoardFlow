@@ -896,8 +896,7 @@ function updatePageUI() {
     pageLabel.textContent = pdfDoc ? `${pageNum} / ${pdfDoc.numPages}` : '–';
 }
 function closeCurrentFile() {
-    if (!currentFile) return;
-    canvas.remove(currentFile);
+    if (currentFile) canvas.remove(currentFile);
     currentFile = null; fileKind = null;
     pdfDoc = null; pageNum = 1;
     pageMemory.clear(); boardPage = 0; boardPages = 1; updateBoardPager();
@@ -1100,6 +1099,8 @@ function askSaveChanges() {
     });
 }
 window.boardFlowRequestClose = async function () {
+    await saveCheckpoint('last');
+    if (activeSubjectId) await saveCheckpoint('subject:' + activeSubjectId);
     if (!hasInk()) return true;
     const text = document.getElementById('saveDialogText');
     if (text) text.textContent = boardPages > 1 ? 'Save changes to this board or all pages before closing?' : 'Save changes before closing?';
@@ -1115,10 +1116,31 @@ const subjectNameInput = document.getElementById('subjName');
 const subjectFolderInput = document.getElementById('subjFolder');
 const subjectFolderStatus = document.getElementById('subjFolderStatus');
 const subjectSuggestions = document.getElementById('subjectSuggestions');
+const subjectForm = document.getElementById('subjForm');
 const subjectStore = 'boardflow-subjects';
+const subjectLabel = document.getElementById('subjectLabel');
+const dateLabel = document.getElementById('dateLabel');
+const dateMonth = document.getElementById('dateMonth');
+const dateDay = document.getElementById('dateDay');
+const dateOrdinal = document.getElementById('dateOrdinal');
+const dateYear = document.getElementById('dateYear');
 let selectedSubjectFolder = null;
 let activeSubjectId = null;
 let activeSubjectFolder = null;
+let subjectSelectionVersion = 0;
+let subjectEditMode = false;
+const subjectColors = ['#2f80ed', '#27ae60', '#e67e22', '#8e44ad', '#d35400', '#16a085', '#c0392b', '#2980b9'];
+function updateSubjectLabel(subject) {
+    subjectLabel.textContent = subject ? subject.name : '';
+    subjectLabel.classList.toggle('hidden', !subject);
+    const now = new Date();
+    const day = now.getDate();
+    const suffix = day % 10 === 1 && day % 100 !== 11 ? 'st' : day % 10 === 2 && day % 100 !== 12 ? 'nd' : day % 10 === 3 && day % 100 !== 13 ? 'rd' : 'th';
+    dateMonth.textContent = now.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+    dateDay.textContent = day;
+    dateOrdinal.textContent = suffix;
+    dateYear.textContent = now.getFullYear();
+}
 function readSubjects() {
     try { return JSON.parse(localStorage.getItem(subjectStore) || '[]'); }
     catch (error) { console.error('Unable to read subjects', error); return []; }
@@ -1138,12 +1160,13 @@ function subjectDatabase() {
         request.onerror = () => reject(request.error);
     });
 }
-async function saveCheckpoint() {
-    if (!lastUploadedFile) return;
-    stashPage(memKey(boardPage, pageNum));
+async function saveCheckpoint(checkpointKey, subjectIdOverride) {
+    if (hasInk()) pageMemory.set(memKey(boardPage, pageNum), annotationsJSON());
+    else pageMemory.delete(memKey(boardPage, pageNum));
     const db = await subjectDatabase();
     const checkpoint = {
         file: lastUploadedFile,
+        subjectId: subjectIdOverride === undefined ? activeSubjectId : subjectIdOverride,
         pageNum,
         boardPage,
         boardPages,
@@ -1154,33 +1177,40 @@ async function saveCheckpoint() {
         grid: showGrid
     };
     await new Promise((resolve, reject) => {
-        const request = db.transaction('checkpoint', 'readwrite').objectStore('checkpoint').put(checkpoint, 'last');
+        const request = db.transaction('checkpoint', 'readwrite').objectStore('checkpoint').put(checkpoint, checkpointKey || (activeSubjectId ? 'subject:' + activeSubjectId : 'last'));
         request.onsuccess = resolve;
         request.onerror = () => reject(request.error);
     });
     db.close();
 }
-async function readCheckpoint() {
+async function readCheckpoint(checkpointKey) {
     const db = await subjectDatabase();
     const checkpoint = await new Promise((resolve, reject) => {
-        const request = db.transaction('checkpoint').objectStore('checkpoint').get('last');
+        const request = db.transaction('checkpoint').objectStore('checkpoint').get(checkpointKey || 'last');
         request.onsuccess = () => resolve(request.result || null);
         request.onerror = () => reject(request.error);
     });
     db.close();
     return checkpoint;
 }
-async function restoreCheckpoint() {
-    const checkpoint = await readCheckpoint();
-    if (!checkpoint || !checkpoint.file) return;
-    const file = new File([checkpoint.file.data], checkpoint.file.name, { type: checkpoint.file.type });
-    lastUploadedFile = checkpoint.file;
+async function restoreCheckpoint(checkpointKey) {
+    const checkpoint = await readCheckpoint(checkpointKey);
+    if (!checkpoint) return false;
     suppressHistory = true;
     closeCurrentFile();
     removeAnnotationsSilent();
-    await openFile(file);
-    pageNum = checkpoint.pageNum || 1;
-    if (pdfDoc && pageNum > 1) await showPage(pageNum);
+    lastUploadedFile = checkpoint.file || null;
+    activeSubjectId = checkpoint.subjectId || null;
+    activeSubjectFolder = activeSubjectId ? await readSubjectFolderHandle(activeSubjectId) : null;
+    updateSubjectLabel(activeSubjectId ? readSubjects().find(entry => entry.id === activeSubjectId) : null);
+    if (checkpoint.file) {
+        const file = new File([checkpoint.file.data], checkpoint.file.name, { type: checkpoint.file.type });
+        await openFile(file);
+        pageNum = checkpoint.pageNum || 1;
+        if (pdfDoc && pageNum > 1) await showPage(pageNum);
+    } else {
+        pageNum = 1;
+    }
     boardPage = checkpoint.boardPage || 0;
     boardPages = checkpoint.boardPages || 1;
     pageMemory.clear();
@@ -1191,6 +1221,22 @@ async function restoreCheckpoint() {
     showGrid = checkpoint.grid === undefined ? showGrid : !!checkpoint.grid;
     applyTheme();
     updateBoardPager();
+    updatePageUI();
+    suppressHistory = false;
+    resetHistory();
+    return true;
+}
+function clearWorkspace() {
+    suppressHistory = true;
+    closeCurrentFile();
+    removeAnnotationsSilent();
+    lastUploadedFile = null;
+    pageMemory.clear();
+    boardPage = 0;
+    boardPages = 1;
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    updateBoardPager();
+    updateViewChip();
     updatePageUI();
     suppressHistory = false;
     resetHistory();
@@ -1223,34 +1269,87 @@ function renderSubjects() {
         subjectSuggestions.appendChild(option);
     });
     subjectList.innerHTML = '';
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'subj-edit-toggle';
+    editButton.textContent = subjectEditMode ? '✓ Done' : '✎ Edit';
+    editButton.addEventListener('click', () => {
+        subjectEditMode = !subjectEditMode;
+        subjectForm.classList.toggle('hidden', !subjectEditMode);
+        renderSubjects();
+    });
+    subjectList.appendChild(editButton);
     if (!subjects.length) {
         subjectList.innerHTML = '<div class="empty-state">No subjects yet. Add a subject and choose its lesson save folder.</div>';
+        subjectList.prepend(editButton);
         return;
     }
-    subjects.forEach(subject => {
+    subjects.forEach((subject, index) => {
         const item = document.createElement('div');
         item.className = 'subj-item';
-        item.innerHTML = `<span class="subj-name">📘 ${subject.name}<small style="display:block;color:#888;margin-top:4px">${subject.folderName || 'No save folder selected'}${subject.bookName ? ` · legacy book: ${subject.bookName}` : ''}</small></span><button class="subj-delete" type="button">Delete</button>`;
-        item.addEventListener('click', () => openSubject(subject.id));
-        item.querySelector('.subj-delete').addEventListener('click', event => {
-            event.stopPropagation();
-            const remaining = readSubjects().filter(entry => entry.id !== subject.id);
-            writeSubjects(remaining);
-            renderSubjects();
+        const color = subject.color || subjectColors[index % subjectColors.length];
+        item.style.backgroundColor = color;
+        const name = document.createElement('span');
+        name.className = 'subj-name';
+        name.title = subject.name;
+        name.textContent = subject.name;
+        item.appendChild(name);
+        item.addEventListener('click', () => {
+            if (subjectEditMode) return;
+            updateSubjectLabel(subject);
+            openSubject(subject.id).catch(error => console.error('Unable to open subject workspace', error));
         });
+        if (subjectEditMode) {
+            const colorInput = document.createElement('input');
+            colorInput.className = 'subj-color';
+            colorInput.type = 'color';
+            colorInput.value = color;
+            colorInput.title = `Choose color for ${subject.name}`;
+            colorInput.addEventListener('click', event => event.stopPropagation());
+            colorInput.addEventListener('change', event => {
+                const updated = readSubjects().map(entry => entry.id === subject.id ? { ...entry, color: event.target.value } : entry);
+                writeSubjects(updated);
+                renderSubjects();
+            });
+            item.appendChild(colorInput);
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'subj-delete';
+            deleteButton.type = 'button';
+            deleteButton.textContent = 'Delete';
+            deleteButton.addEventListener('click', event => {
+                event.stopPropagation();
+                const remaining = readSubjects().filter(entry => entry.id !== subject.id);
+                writeSubjects(remaining);
+                renderSubjects();
+            });
+            item.appendChild(deleteButton);
+        }
         subjectList.appendChild(item);
     });
 }
 async function openSubject(id) {
     const subject = readSubjects().find(entry => entry.id === id);
     if (!subject) return;
+    subjectSelectionVersion += 1;
+    const previousCheckpointKey = activeSubjectId ? 'subject:' + activeSubjectId : 'last';
+    const previousSubjectId = activeSubjectId;
+    activeSubjectId = id;
+    updateSubjectLabel(subject);
+    await saveCheckpoint(previousCheckpointKey, previousSubjectId);
+    activeSubjectFolder = await readSubjectFolderHandle(id);
+    if (!(await restoreCheckpoint('subject:' + id))) clearWorkspace();
     activeSubjectId = id;
     activeSubjectFolder = await readSubjectFolderHandle(id);
+    updateSubjectLabel(subject);
     subjectPanel.classList.add('hidden');
 }
 document.getElementById('btnSubjects').onclick = () => {
     subjectPanel.classList.toggle('hidden');
-    if (!subjectPanel.classList.contains('hidden')) renderSubjects();
+    if (!subjectPanel.classList.contains('hidden')) {
+        subjectEditMode = false;
+        subjectForm.classList.add('hidden');
+        renderSubjects();
+    }
 };
 document.getElementById('subjClose').onclick = () => subjectPanel.classList.add('hidden');
 subjectFolderInput.onclick = async () => {
@@ -1274,7 +1373,7 @@ document.getElementById('subjCreate').onclick = async () => {
     if (!selectedSubjectFolder) { subjectFolderInput.focus(); return; }
     const id = 'subject-' + Date.now().toString(36);
     const subjects = readSubjects();
-    subjects.push({ id, name, folderName: selectedSubjectFolder.name });
+    subjects.push({ id, name, folderName: selectedSubjectFolder.name, color: subjectColors[subjects.length % subjectColors.length] });
     writeSubjects(subjects);
     await saveSubjectFolderHandle(id, selectedSubjectFolder);
     subjectNameInput.value = '';
@@ -1680,10 +1779,18 @@ window.BF = {
 // ================= Init =================
 updatePageUI();
 updateViewChip();
+updateSubjectLabel(activeSubjectId ? readSubjects().find(entry => entry.id === activeSubjectId) : null);
 applyTheme();
 setTool('pen');
 showMenu();
 resetHistory();
 window.dispatchEvent(new Event('bf-ready'));
-setTimeout(() => restoreCheckpoint().catch(error => console.error('Unable to restore checkpoint', error)), 0);
+setTimeout(() => {
+    const startupSelectionVersion = subjectSelectionVersion;
+    restoreCheckpoint().then(() => {
+        if (startupSelectionVersion === subjectSelectionVersion) {
+            updateSubjectLabel(activeSubjectId ? readSubjects().find(entry => entry.id === activeSubjectId) : null);
+        }
+    }).catch(error => console.error('Unable to restore checkpoint', error));
+}, 0);
 } // end startApp
