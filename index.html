@@ -77,6 +77,12 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
 .dialog-box p { margin:0 0 20px 0; color:#aaa; font-size:13px; line-height:1.5; }
 .dialog-buttons { display:flex; gap:10px; justify-content:center; }
 .dialog-buttons button { min-width:100px; }
+
+/* Contextual geometry tools appear after an angle is selected. */
+#geometryToolRail { position:absolute; top:50%; right:12px; transform:translateY(-50%); z-index:60; display:flex; flex-direction:column; gap:6px; padding:7px; background:#252526f2; border:1px solid #3c3c3c; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.35); }
+#geometryToolRail button { width:34px; height:34px; padding:0; display:grid; place-items:center; font-size:17px; border-color:#4b4b4b; }
+#geometryToolRail button:hover { background:#007acc; border-color:#007acc; }
+#geometryToolRail button:focus-visible { outline:2px solid #4daafc; outline-offset:2px; }
 </style>
 </head>
 <body>
@@ -256,6 +262,17 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
     </div>
     <div id="watermark"><b>BoardFlow</b> By FadFlow</div>
     <input type="file" id="fileInput" accept=".pdf,image/*,.boardview,.json" hidden>
+</div>
+<div id="geometryToolRail" class="hidden" aria-label="Geometry tools">
+    <button type="button" title="Supplementary and complementary angles" aria-label="Supplementary and complementary angles">∠</button>
+    <button type="button" title="Vertically opposite angles" aria-label="Vertically opposite angles">↔</button>
+    <button type="button" title="Parallel-line transversal relationships" aria-label="Parallel-line transversal relationships">∥</button>
+    <button type="button" title="Triangle angle sum" aria-label="Triangle angle sum">△</button>
+    <button type="button" title="Missing-angle exercise" aria-label="Missing-angle exercise">?</button>
+    <button type="button" title="Sine, cosine, and tangent" aria-label="Sine, cosine, and tangent">sin</button>
+    <button type="button" title="Pythagoras theorem" aria-label="Pythagoras theorem">√</button>
+    <button type="button" title="Perimeter and area" aria-label="Perimeter and area">▱</button>
+    <button type="button" title="Interactive angle measurement" aria-label="Interactive angle measurement">⌒</button>
 </div>
 
 <div id="dialog" class="modal hidden">

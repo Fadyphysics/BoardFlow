@@ -1120,6 +1120,10 @@ const natLetters = 'abcdefghijklmnopqrstuvwxyz';
 let natEndpointCounter = 0;
 let natCrossingCounter = 0;
 const btnAngles = document.getElementById('btnAngles');
+const geometryToolRail = document.getElementById('geometryToolRail');
+function setGeometryToolRailVisible(visible) {
+    geometryToolRail.classList.toggle('hidden', !visible);
+}
 function updateAngleButton() {
     const hasArrows = canvas.getObjects().some(o => o.isArrow);
     btnAngles.classList.toggle('hidden', !hasArrows);
@@ -1128,6 +1132,7 @@ function updateAngleButton() {
 btnAngles.onclick = () => {
     natLessonVisible = !natLessonVisible;
     natRevealed.clear();
+    setGeometryToolRailVisible(false);
     canvas.requestRenderAll();
     updateAngleButton();
 };
@@ -1173,8 +1178,10 @@ function natClick(e) {
     const clickY = e.clientY - rect.top;
     for (const hit of natHits) {
         const dist = Math.sqrt((hit.x - clickX)**2 + (hit.y - clickY)**2);
-        if (dist <= 8) {
+        // Include the nearby angle name so clicking either the circle or label selects it.
+        if (dist <= 42) {
             natRevealed.has(hit.key) ? natRevealed.delete(hit.key) : natRevealed.add(hit.key);
+            setGeometryToolRailVisible(true);
             canvas.requestRenderAll();
             return true;
         }
