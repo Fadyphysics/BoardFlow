@@ -22,6 +22,9 @@ const CDN_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.w
 })();
 
 function startApp(usedCDN) {
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+        navigator.serviceWorker.register('./service-worker.js').catch(error => console.error('Unable to register offline app shell', error));
+    }
 
 // SELF-HEAL SHIELD: any missing button becomes an invisible dummy — wiring can never crash again
 (function () {
@@ -134,11 +137,12 @@ function removeAnnotationsSilent() {
 const THEMES = { light: { bg: '#ffffff', grid: 'rgba(0,0,0,.10)' }, dark: { bg: '#202327', grid: 'rgba(255,255,255,.10)' } };
 let theme = loadPref('bv-theme') || 'light';
 let showGrid = loadPref('bv-grid') === '1';
-const GRID_SIZE = 30;
+const GRID_SIZE = 10;
 const btnTheme = document.getElementById('btnTheme');
 const btnGrid = document.getElementById('btnGrid');
 function applyTheme() {
     canvas.setBackgroundColor(THEMES[theme].bg, () => canvas.requestRenderAll());
+    updateGridBackground();
     if (!HAS_ERASER) { allEraser.color = THEMES[theme].bg; }
     btnTheme.classList.toggle('active', theme === 'dark');
     btnGrid.classList.toggle('active', showGrid);
@@ -146,28 +150,39 @@ function applyTheme() {
 }
 btnTheme.onclick = () => { theme = theme === 'light' ? 'dark' : 'light'; applyTheme(); };
 btnGrid.onclick = () => { showGrid = !showGrid; applyTheme(); };
-canvas.on('after:render', () => {
-    if (!showGrid) return;
-    const ctx = canvas.contextContainer;
-    const vt = canvas.viewportTransform;
+function updateGridBackground() {
+    if (!showGrid) {
+        canvas.backgroundImage = null;
+        return;
+    }
     const zoom = canvas.getZoom();
-    let step = GRID_SIZE;
-    while (step * zoom < 14) step *= 2;
-    while (step * zoom > 90) step /= 2;
-    const thin = clamp(zoom, 0.3, 1);
-    const inv = fabric.util.invertTransform(vt);
-    const tl = fabric.util.transformPoint(new fabric.Point(0, 0), inv);
-    const br = fabric.util.transformPoint(new fabric.Point(canvas.getWidth(), canvas.getHeight()), inv);
-    ctx.save();
-    ctx.transform(vt[0], vt[1], vt[2], vt[3], vt[4], vt[5]);
-    ctx.strokeStyle = THEMES[theme].grid;
-    ctx.lineWidth = thin / zoom;
-    ctx.beginPath();
-    for (let x = Math.floor(tl.x / step) * step; x <= br.x; x += step) { ctx.moveTo(x, tl.y); ctx.lineTo(x, br.y); }
-    for (let y = Math.floor(tl.y / step) * step; y <= br.y; y += step) { ctx.moveTo(tl.x, y); ctx.lineTo(br.x, y); }
-    ctx.stroke();
-    ctx.restore();
-});
+    // Keep the grid spacing fixed in screen pixels while the canvas zooms.
+    const worldStep = GRID_SIZE / zoom;
+    const source = document.createElement('canvas');
+    const size = 5000;
+    source.width = size;
+    source.height = size;
+    const context = source.getContext('2d');
+    context.strokeStyle = THEMES[theme].grid;
+    context.lineWidth = 1 / zoom;
+    context.beginPath();
+    for (let x = 0; x <= size; x += worldStep) {
+        context.moveTo(x, 0);
+        context.lineTo(x, size);
+    }
+    for (let y = 0; y <= size; y += worldStep) {
+        context.moveTo(0, y);
+        context.lineTo(size, y);
+    }
+    context.stroke();
+    canvas.backgroundImage = new fabric.Image(source, {
+        left: -size / 2,
+        top: -size / 2,
+        selectable: false,
+        evented: false,
+        excludeFromExport: true
+    });
+}
 
 // ================= Brushes =================
 const pen = new fabric.PencilBrush(canvas);
@@ -690,12 +705,13 @@ function updateViewChip() {
     viewChip.style.display = changed ? 'flex' : 'none';
     zoomLabel.textContent = Math.round(vt[0] * 100) + '%';
 }
-document.getElementById('btnHome').onclick = () => { canvas.setViewportTransform([1, 0, 0, 1, 0, 0]); updateViewChip(); canvas.requestRenderAll(); };
+document.getElementById('btnHome').onclick = () => { canvas.setViewportTransform([1, 0, 0, 1, 0, 0]); updateGridBackground(); updateViewChip(); canvas.requestRenderAll(); };
 wrap.addEventListener('wheel', e => {
     e.preventDefault();
     const rect = canvas.lowerCanvasEl.getBoundingClientRect();
     const p = new fabric.Point(e.clientX - rect.left, e.clientY - rect.top);
     canvas.zoomToPoint(p, clamp(canvas.getZoom() * Math.pow(1.0015, -e.deltaY), 0.2, 5));
+    updateGridBackground();
     updateViewChip();
 }, { passive: false });
 const activePointers = new Map();
@@ -735,6 +751,7 @@ function handlePinch() {
     vt[4] += mid.x - pinch.lastMid.x;
     vt[5] += mid.y - pinch.lastMid.y;
     canvas.zoomToPoint(new fabric.Point(mid.x - rect.left, mid.y - rect.top), clamp(pinch.startZoom * (dist / pinch.startDist), 0.2, 5));
+    updateGridBackground();
     pinch.lastMid = mid;
     updateViewChip();
 }
@@ -860,7 +877,7 @@ canvas.on('mouse:move', opt => {
     }
 });
 canvas.on('mouse:up', () => {
-    if (panning) { panning = false; canvas.selection = (tool === 'select'); }
+    if (panning) { panning = false; canvas.selection = (tool === 'select'); updateGridBackground(); canvas.requestRenderAll(); }
     inkErasing = false;
     if (arrowStart) {
         if (tempArrow && (tempArrow.width + tempArrow.height) < 14) {
@@ -1118,6 +1135,7 @@ const subjectFolderStatus = document.getElementById('subjFolderStatus');
 const subjectSuggestions = document.getElementById('subjectSuggestions');
 const subjectForm = document.getElementById('subjForm');
 const subjectStore = 'boardflow-subjects';
+const activeSubjectStore = 'boardflow-active-subject';
 const subjectLabel = document.getElementById('subjectLabel');
 const dateLabel = document.getElementById('dateLabel');
 const dateMonth = document.getElementById('dateMonth');
@@ -1200,7 +1218,7 @@ async function restoreCheckpoint(checkpointKey) {
     closeCurrentFile();
     removeAnnotationsSilent();
     lastUploadedFile = checkpoint.file || null;
-    activeSubjectId = checkpoint.subjectId || null;
+    activeSubjectId = checkpoint.subjectId || loadPref(activeSubjectStore) || null;
     activeSubjectFolder = activeSubjectId ? await readSubjectFolderHandle(activeSubjectId) : null;
     updateSubjectLabel(activeSubjectId ? readSubjects().find(entry => entry.id === activeSubjectId) : null);
     if (checkpoint.file) {
@@ -1261,7 +1279,7 @@ async function readSubjectFolderHandle(id) {
     return handle;
 }
 function renderSubjects() {
-    const subjects = readSubjects();
+    const subjects = readSubjects().slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     subjectSuggestions.innerHTML = '';
     subjects.forEach(subject => {
         const option = document.createElement('option');
@@ -1285,6 +1303,8 @@ function renderSubjects() {
         return;
     }
     subjects.forEach((subject, index) => {
+        const row = document.createElement('div');
+        row.className = 'subj-row';
         const item = document.createElement('div');
         item.className = 'subj-item';
         const color = subject.color || subjectColors[index % subjectColors.length];
@@ -1295,7 +1315,11 @@ function renderSubjects() {
         name.textContent = subject.name;
         item.appendChild(name);
         item.addEventListener('click', () => {
-            if (subjectEditMode) return;
+            if (subjectEditMode) {
+                const colorInput = item.querySelector('.subj-color');
+                if (colorInput) colorInput.click();
+                return;
+            }
             updateSubjectLabel(subject);
             openSubject(subject.id).catch(error => console.error('Unable to open subject workspace', error));
         });
@@ -1315,16 +1339,23 @@ function renderSubjects() {
             const deleteButton = document.createElement('button');
             deleteButton.className = 'subj-delete';
             deleteButton.type = 'button';
-            deleteButton.textContent = 'Delete';
+            deleteButton.textContent = '×';
+            deleteButton.title = `Delete ${subject.name}`;
             deleteButton.addEventListener('click', event => {
                 event.stopPropagation();
+                if (!window.confirm(`Delete subject "${subject.name}"? This cannot be undone.`)) return;
                 const remaining = readSubjects().filter(entry => entry.id !== subject.id);
                 writeSubjects(remaining);
+                if (activeSubjectId === subject.id) {
+                    activeSubjectId = null;
+                    savePref(activeSubjectStore, '');
+                }
                 renderSubjects();
             });
-            item.appendChild(deleteButton);
+            row.appendChild(deleteButton);
         }
-        subjectList.appendChild(item);
+        row.appendChild(item);
+        subjectList.appendChild(row);
     });
 }
 async function openSubject(id) {
@@ -1334,6 +1365,7 @@ async function openSubject(id) {
     const previousCheckpointKey = activeSubjectId ? 'subject:' + activeSubjectId : 'last';
     const previousSubjectId = activeSubjectId;
     activeSubjectId = id;
+    window.localStorage.setItem(activeSubjectStore, id);
     updateSubjectLabel(subject);
     await saveCheckpoint(previousCheckpointKey, previousSubjectId);
     activeSubjectFolder = await readSubjectFolderHandle(id);

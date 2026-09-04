@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BoardFlow</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1e1e1e">
 <style>
 * { box-sizing: border-box; }
 body { margin:0; font-family: system-ui, -apple-system, sans-serif; background:#1e1e1e; color:#eee; overflow:hidden; }
@@ -72,17 +74,18 @@ textarea { width:100%; min-height:60px; resize:vertical; font-family:monospace; 
 #subjPanel h3 { display:none; }
 #subjClose { background:transparent; border:none; color:#aaa; font-size:20px; cursor:pointer; padding:0 4px; line-height:1; }
 #subjClose:hover { color:#fff; }
-#subjList { display:flex; flex-direction:column; align-items:flex-end; gap:7px; width:164px; margin-left:auto; }
+#subjList { display:flex; flex-direction:column; align-items:flex-end; gap:7px; width:190px; margin-left:auto; }
 .subj-edit-toggle { width:164px; height:22px; background:linear-gradient(#858585, #5f5f5f); border:none; color:#eee; border-radius:7px; padding:2px 9px; cursor:pointer; font-size:10px; line-height:14px; text-align:left; box-shadow:0 3px 5px #0006, inset 0 1px 1px #ffffff55; }
 .subj-edit-toggle:hover { background:#777; color:#fff; }
 .subj-item { width:164px; min-height:22px; box-sizing:border-box; border:none; border-radius:7px; padding:2px 9px; cursor:pointer; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:4px; transition:all .2s; box-shadow:0 3px 5px #0006, inset 0 1px 1px #ffffff55; }
 .subj-item:hover { filter:brightness(1.12); transform:translateY(-1px); }
 .subj-name { width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; font-weight:600; color:#fff; text-shadow:0 1px 2px #0008; }
-.subj-color { width:30px; height:22px; padding:0; border:1px solid #fff; border-radius:5px; cursor:pointer; }
-.subj-delete { background:#c33; border-color:#c33; padding:4px 8px; font-size:11px; }
-.subj-delete:hover { background:#d44; }
+.subj-color { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.subj-row { width:190px; display:flex; align-items:center; justify-content:flex-end; gap:8px; }
+.subj-delete { flex:0 0 18px; width:18px; height:18px; margin:0; padding:0; background:#d33; border:none; border-radius:50%; color:#fff; font-size:13px; line-height:18px; font-weight:700; cursor:pointer; box-shadow:0 2px 3px #0006; }
+.subj-delete:hover { background:#f44; transform:scale(1.08); }
 .empty-state { text-align:center; padding:30px 15px; color:#888; font-size:13px; line-height:1.6; }
-#subjForm { position:absolute; right:174px; top:0; width:280px; display:flex; flex-direction:column; gap:8px; background:#2d2d2df7; padding:12px; border-radius:6px; border:1px solid #3c3c3c; }
+#subjForm { position:absolute; right:200px; top:0; width:280px; display:flex; flex-direction:column; gap:8px; background:#2d2d2df7; padding:12px; border-radius:6px; border:1px solid #3c3c3c; }
 #subjForm input[type="text"], #subjForm input[type="file"] { width:100%; padding:8px; background:#1e1e1e; border:1px solid #555; border-radius:4px; color:#eee; font-size:13px; }
 #subjForm button { width:100%; }
 

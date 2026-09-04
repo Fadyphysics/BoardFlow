@@ -2,6 +2,15 @@
   "name": "boardflow",
   "version": "2.1.0",
   "main": "main.js",
+  "scripts": {
+    "test:e2e": "node --test tests/subject-checkpoints.test.js",
+    "android:add": "cap add android",
+    "prepare:web": "node scripts/copy-web.js",
+    "android:sync": "npm run prepare:web && cap sync android",
+    "android:build": "npm run android:sync && cd android && gradlew.bat assembleDebug",
+    "android:open": "cap open android",
+    "build:windows": "electron-builder --win"
+  },
   "build": {
     "appId": "com.fadflow.boardflow",
     "productName": "BoardFlow",
@@ -26,7 +35,13 @@
     }
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "electron": "^44.1.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "playwright": "^1.62.1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/core": "^8.5.1"
   }
 }
