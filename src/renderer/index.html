@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+   <style>
+     /* EMERGENCY LAYOUT OVERRIDE - DO NOT DELETE */
+     body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background: #121212; }
+     #canvasWrap { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; margin: 0; padding: 0; }
+     #board { width: 100% !important; height: 100% !important; display: block; background: #121212; margin: 0; padding: 0; }
+     .hidden { display: none !important; visibility: hidden !important; }
+     .hud { position: absolute; top: 10px; left: 10px; z-index: 10; }
+   </style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' blob: data:; font-src 'self' data:">
+<title>BoardFlow</title>
+<link rel="icon" href="./app-icon.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/app-192.png">
+<meta name="theme-color" content="#121212">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div id="canvasWrap">
+    <canvas id="board"></canvas>
+    <div id="subjectLabel" class="hidden"></div>
+    <div id="dateLabel"><span id="dateMonth"></span>/<span id="dateDay"></span><sup id="dateOrdinal"></sup>/<span id="dateYear"></span></div>
+    <div class="hud" id="hud">
+        <button id="btnMenu" title="Toggle menu — hold & drag to move (top/bottom)"><span></span><span></span><span></span></button>
+        <button id="btnPenQuick" class="chip icon-chip" title="Back to pen" aria-label="Pen">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16 10-10 4 4L8 20H4v-4Zm8-8 4 4M4 20l4-1"/></svg>
+        </button>
+        <button id="btnUndoQuick" class="chip icon-chip" title="Undo the last action" aria-label="Undo">↩</button>
+        <button id="btnEraserInk" class="chip icon-chip" title="Erase sketches only" aria-label="Ink eraser">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 14 8-9a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-5 6H8l-4-4a1 1 0 0 1 0-1Z"/><path d="m9 9 7 7M8 19h13"/></svg>
+        </button>
+        <button id="btnEraserAll" class="chip icon-chip" title="Erase everything touched" aria-label="All eraser">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15 13 5l7 7-7 7H7l-4-4Z"/><path d="m10 8 7 7M3 20h18M17 5l2-2 3 3-2 2"/></svg>
+        </button>
+        <button id="btnClearQuick" class="chip icon-chip" title="Clear editable ink, text and shapes; keep uploaded files" aria-label="Clear board">×</button>
+        <button id="btnAutoShapes" class="chip icon-chip" title="Convert hand-drawn lines, shapes, zigzags, and waves" aria-label="Convert hand-drawn shapes" aria-pressed="false">◇</button>
+        <button id="btnAngles" class="chip hidden" title="Show angles for lines and shapes">∠</button>
+        <div class="chip pager" id="pager" role="group" aria-label="File pages" style="display:none">
+            <button id="btnPrev" title="Previous page">◀</button><span id="pageLabel">–</span><button id="btnNext" title="Next page">▶</button>
+        </div>
+        <div class="chip pager" id="bpager" role="group" aria-label="Board pages" style="display:none">
+            <span class="pager-kind">Board</span>
+            <button id="btnBPrev" title="Previous board page">◀</button><span id="bpageLabel">1 / 1</span><button id="btnBNext" title="Next board page">▶</button><button id="btnBAdd" title="Add a fresh board page">＋</button><button id="btnBDelete" title="Delete this board page" aria-label="Delete this board page">🗑</button>
+        </div>
+        <div class="chip viewchip" id="viewChip" style="display:none">
+            <span id="zoomLabel">100%</span><button id="btnHome" class="icon-chip" title="Reset zoom & position" aria-label="Fit screen">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 3l9 7v10H3V10Z"/><path d="M9 20v-7h6v7"/></svg>
+            </button>
+        </div>
+    </div>
+    <div id="menu" class="hidden">
+        <section class="tool-group">
+            <span class="tool-group-label">Workspace</span>
+            <button id="btnSubjects" title="Open your teaching subjects">📚 Subjects</button>
+            <button id="btnUpload" title="Open a lesson, or replace the board with a PDF or image">📂 Open / Upload</button>
+            <button id="btnSaveBoard" title="Export the current board page as a PNG image">💾 Export PNG</button>
+            <button id="btnUndo" title="Undo (Ctrl+Z)">↩ Undo</button>
+            <button id="btnRedo" title="Redo (Ctrl+Y)">↪ Redo</button>
+        </section>
+        <section class="tool-group">
+            <span class="tool-group-label">Create</span>
+            <button id="btnSelect" title="Move / resize objects">↖ Select</button>
+            <button id="btnPen" title="Pen">✏ Pen</button>
+            <button id="btnArrow" title="Arrow tool — drag from tail to head">➜ Arrow</button>
+            <button id="btnText" title="Click anywhere to type">T Text</button>
+            <select id="fontFamilySel" title="Font for text">
+                <option value="Cambria, Georgia, serif">Cambria</option>
+                <option value="Tahoma, Verdana, sans-serif">Tahoma</option>
+                <option value="Arial, sans-serif">Arial</option>
+                <option value="'Times New Roman', serif">Times New Roman</option>
+                <option value="'Ink Free', 'Segoe Print', cursive">Ink Free</option>
+            </select>
+            <label class="compact-label">Text <input id="fontSizeSel" type="number" min="8" max="36" step="1" value="24" title="Text size from 8 to 36"></label>
+        </section>
+        <section class="tool-group">
+            <span class="tool-group-label">Ink</span>
+            <label class="compact-label">Color <input type="color" id="inkColor" value="#ff3333"></label>
+            <label class="compact-label"><span id="sizeLabel">Pen size</span> <input type="range" id="inkSize" min="0.25" max="24" step="0.25" value="2"></label>
+            <span class="swatch-set" aria-label="Highlighter colors">
+                <button class="swatch" id="hlYellow" data-c="#FFE600" style="background:#FFE600" title="Yellow highlighter"></button>
+                <button class="swatch" id="hlPink" data-c="#FF7BAC" style="background:#FF7BAC" title="Pink highlighter"></button>
+                <button class="swatch" id="hlPist" data-c="#93C572" style="background:#93C572" title="Pistachio highlighter"></button>
+            </span>
+        </section>
+        <section class="tool-group">
+            <span class="tool-group-label">Teaching tools</span>
+            <button id="shapeTriangle" title="Insert triangle">△</button>
+            <button id="shapeSquare" title="Insert square">□</button>
+            <button id="shapeCircle" title="Insert circle">○</button>
+            <label class="compact-label">Shape <input type="color" id="shapeColor" value="#315ee8" title="Shape color"></label>
+            <button id="btnRuler" title="Insert a ruler">📏 Ruler</button>
+            <button id="btnProtractor" title="Insert a protractor">◒ Protractor</button>
+            <button id="btnSticky" title="Insert a sticky note">▤ Note</button>
+            <button id="btnLens" title="Show and calculate angles for lines and shapes">∠ Angles</button>
+            <button id="btnMath" class="accent-button" title="Graphs, algebra, statistics, and circles">✦ Smart Math</button>
+        </section>
+        <section class="tool-group">
+            <span class="tool-group-label">Board</span>
+            <button id="btnNewPage" title="Add a fresh board page">＋ Page</button>
+            <button id="btnTimer" title="Countdown timer">◷ Timer</button>
+            <button id="btnClear" title="Clear editable ink, text and shapes; Undo restores them">⌧ Clear</button>
+            <button id="btnTheme" title="Toggle light/dark board">◐ Theme</button>
+            <button id="btnGrid" title="Toggle grid background">▦ Grid</button>
+        </section>
+    </div>
+    <div id="subjPanel" class="hidden">
+        <h3><span>📚 Subjects</span><button id="subjClose" title="Close">✕</button></h3>
+        <div id="subjForm" class="hidden">
+            <input id="subjName" type="text" list="subjectSuggestions" placeholder="Subject name (e.g. Geometry)">
+            <datalist id="subjectSuggestions"></datalist>
+            <small id="subjFolderStatus">The first subject will ask you to choose one main BoardFlow workspace folder. Subject folders and lesson files are then created automatically.</small>
+            <input type="text" autocomplete="username" hidden>
+            <form onsubmit="event.preventDefault();" style="display:contents;">
+                <input type="password" id="subjPwd" placeholder="Deletion password (optional)" autocomplete="new-password">
+            </form>
+            <button id="subjCreate">Add subject</button>
+        </div>
+        <div id="subjList"></div>
+    </div>
+
+    <div id="mathPanel" class="hidden">
+        <button id="mathClose" title="Close">✕</button>
+        <h3>✦ Smart Math</h3>
+        <div class="mTabs">
+            <button id="mTabGraph" class="active">📈 Graphs</button>
+            <button id="mTabAlg">🧮 Algebra</button>
+            <button id="mTabStat">📊 Stats</button>
+            <button id="mTabCircle">◯ Circles</button>
+        </div>
+
+        <div class="mSec on" id="secGraph">
+            <div class="mRow"><select id="gPreset" style="max-width:100%;flex:1">
+                <option value="linear">f(x) = x</option><option value="quad">f(x) = x²</option>
+                <option value="cubic">f(x) = x³</option><option value="recip">f(x) = 1/x</option>
+                <option value="recip2">f(x) = 1/x²</option><option value="sqrt">f(x) = √x</option>
+                <option value="cbrt">f(x) = ∛x</option><option value="abs">f(x) = |x|</option>
+                <option value="exp">f(x) = eˣ</option><option value="ln">f(x) = ln x</option>
+                <option value="const">f(x) = constant</option><option value="sin">sin</option>
+                <option value="cos">cos</option><option value="tan">tan</option>
+                <option value="custom">✏️ Custom y = …</option>
+            </select>
+            <select id="gMode" title="Graph mode">
+                <option value="y">y = f(x)</option>
+                <option value="param">Parametric</option>
+                <option value="piecewise">Piecewise</option>
+            </select>
+            <select id="gDeg"><option value="rad">radians</option><option value="deg">degrees</option></select></div>
+            <div class="mRow hidden" id="customRow"><label>y =</label><input type="text" id="gCustom" style="flex:1" placeholder="e.g. 5*x^2 - 3*x + sin(x)"></div>
+            <div class="mRow hidden" id="paramRow"><label>x(t) =</label><input type="text" id="gParamX" style="flex:1" value="cos(t)"><label>y(t) =</label><input type="text" id="gParamY" style="flex:1" value="sin(t)"><label>t</label><input type="number" id="gParamTMin" value="0" step="0.1" style="width:70px"><label>to</label><input type="number" id="gParamTMax" value="6.28" step="0.1" style="width:80px"></div>
+            <div class="mRow hidden" id="piecewiseRow"><label>Rules</label><textarea id="gPiecewise" rows="2" style="flex:1;min-height:58px">x < -1 : -x | -1 <= x < 2 : x^2 | x >= 2 : 2*x + 1</textarea></div>
+            <div class="mRow"><label><input type="checkbox" id="gDerivative"> Derivative overlay</label></div>
+            <div class="mRow"><label>a</label><input type="range" id="gA" min="-3" max="3" step="0.1" value="1">
+                <label>b</label><input type="range" id="gB" min="0.1" max="4" step="0.1" value="1"></div>
+            <div class="mRow"><label>c</label><input type="range" id="gC" min="-5" max="5" step="0.1" value="0">
+                <label>d</label><input type="range" id="gD" min="-5" max="5" step="0.1" value="0"></div>
+            <div class="mRow"><input type="checkbox" id="gTan"><label style="min-width:auto">Tangent at x =</label>
+                <input type="range" id="gTanP" min="-6" max="6" step="0.1" value="1"></div>
+            <div class="mRow"><input type="checkbox" id="gArea"><label style="min-width:auto">Area from</label>
+                <input type="number" id="gA0" value="0" step="0.5"><label style="min-width:auto">to</label>
+                <input type="number" id="gA1" value="2" step="0.5">
+                <input type="checkbox" id="gTrap" title="Show trapezium strips"><label style="min-width:auto">traps</label></div>
+            <div class="mRow"><input type="checkbox" id="gTrans"><label style="min-width:auto">Transparent background (overlay on PDFs)</label></div>
+            <div class="mRow"><input type="checkbox" id="gSec"><label style="min-width:auto">2nd curve (red)</label>
+                <select id="gPreset2" style="flex:1">
+                    <option value="linear">x</option><option value="quad">x²</option><option value="cubic">x³</option>
+                    <option value="recip">1/x</option><option value="sqrt">√x</option><option value="abs">|x|</option>
+                    <option value="exp">eˣ</option><option value="ln">ln x</option><option value="const">constant</option>
+                    <option value="sin">sin</option><option value="cos">cos</option><option value="tan">tan</option>
+                </select></div>
+            <div class="mRow hidden" id="sec2row"><label>a</label><input type="range" id="gA2" min="-3" max="3" step="0.1" value="1"><label>b</label><input type="range" id="gB2" min="0.1" max="4" step="0.1" value="1"></div>
+            <div class="mRow hidden" id="sec2row2"><label>c</label><input type="range" id="gC2" min="-5" max="5" step="0.1" value="0"><label>d</label><input type="range" id="gD2" min="-5" max="5" step="0.1" value="0"></div>
+            <div class="mActionRow">
+                <button id="gEquation">Insert equation card</button>
+                <button id="gTable">Insert value table</button>
+            </div>
+            <canvas id="gPreview" class="mPrev" width="320" height="200"></canvas>
+            <div class="mRes" id="gInfo">–</div>
+            <button class="mInsert" id="gInsert"> Insert graph on board</button>
+        </div>
+
+        <div class="mSec" id="secAlg">
+            <h3>Quadratic  A·x² + B·x + C</h3>
+            <div class="mRow"><label>A</label><input type="number" id="qA" value="1" step="0.5">
+                <label>B</label><input type="number" id="qB" value="-3" step="0.5">
+                <label>C</label><input type="number" id="qC" value="2" step="0.5"></div>
+            <button id="qSolve">Solve</button>
+            <div class="mRes" id="qResult">–</div>
+            <button class="mInsert" id="qInsert">⬇ Insert graph with roots</button>
+            <h3>Simultaneous (2×2)</h3>
+            <div class="mRow"><input type="number" id="sA1" value="2" step="0.5">x +<input type="number" id="sB1" value="1" step="0.5">y =<input type="number" id="sC1" value="5" step="0.5"></div>
+            <div class="mRow"><input type="number" id="sA2" value="1" step="0.5">x +<input type="number" id="sB2" value="-1" step="0.5">y =<input type="number" id="sC2" value="1" step="0.5"></div>
+            <button id="sSolve">Solve</button>
+            <div class="mRes" id="sResult">–</div>
+        </div>
+
+        <div class="mSec" id="secStat">
+            <h3>Data (one number per line, or x,y pairs for scatter)</h3>
+            <textarea id="stData" placeholder="4&#10;7&#10;7&#10;9&#10;or&#10;1,4&#10;2,6&#10;3,5">4
+7
+7
+9
+12
+7
+10</textarea>
+            <div class="mRow"><select id="stType" style="flex:1">
+                <option value="bar">Bar chart</option><option value="line">Line chart</option>
+                <option value="hist">Histogram</option><option value="scatter">Scatter (+ best fit)</option>
+                <option value="pie">Pie chart</option>
+            </select></div>
+            <div class="mActionRow">
+                <button id="stCalc">Compute + preview</button>
+                <button id="stTable">Insert data table</button>
+            </div>
+            <div class="mRes" id="stResult">–</div>
+            <canvas id="stPreview" class="mPrev" width="320" height="200"></canvas>
+            <button class="mInsert" id="stInsert">⬇ Insert chart</button>
+        </div>
+
+        <div class="mSec" id="secCircle">
+            <div class="panel-intro">Build a classroom-ready circle diagram with live measurements.</div>
+            <div class="mRow circle-fields">
+                <label>Radius <input type="number" id="cRadius" value="5" min="0.1" step="0.5"></label>
+                <label>Sector <input type="number" id="cAngle" value="90" min="1" max="360" step="1">°</label>
+            </div>
+            <div class="mRow">
+                <label><input type="checkbox" id="cDiameter" checked> Diameter</label>
+                <label><input type="checkbox" id="cSector" checked> Sector</label>
+                <label><input type="checkbox" id="cTangent"> Tangent</label>
+            </div>
+            <canvas id="cPreview" class="mPrev" width="320" height="240"></canvas>
+            <div class="mRes" id="cInfo">–</div>
+            <button class="mInsert" id="cInsert">Insert circle visualization</button>
+        </div>
+
+    </div>
+
+    <aside id="classroomPanel" class="classroom-panel hidden" aria-label="Classroom workspace">
+        <header>
+            <div><span>Teacher workspace</span><h3>Classroom Studio</h3></div>
+            <button id="classroomClose" title="Close classroom studio" aria-label="Close classroom studio">×</button>
+        </header>
+        <div class="classroom-tabs" role="tablist">
+            <button class="active" data-classroom-tab="layers">Layers</button>
+            <button data-classroom-tab="session">Live</button>
+            <button data-classroom-tab="assess">Assess</button>
+            <button data-classroom-tab="lesson">Lessons</button>
+        </div>
+        <section class="classroom-section on" data-classroom-section="layers">
+            <div class="studio-callout"><strong>Audience mode</strong><p>Teacher mode can edit every visible layer. Student mode protects lesson and teacher content.</p></div>
+            <div class="studio-row"><label>Mode</label><select id="studioMode"><option value="teacher">Teacher</option><option value="student">Student</option></select></div>
+            <div id="layerList" class="layer-list"></div>
+            <label class="studio-check"><input type="checkbox" id="palmRejection" checked> Reject palm touches while a pen is in use</label>
+            <label class="studio-check"><input type="checkbox" id="beautifyInk" checked> Smooth and beautify new handwriting</label>
+            <div class="studio-actions">
+            <button id="btnRecognizeShape">◇ Recognize shape</button>
+            <button id="btnPresentation">▣ Presentation-safe</button>
+            </div>
+        </section>
+        <section class="classroom-section" data-classroom-section="session">
+            <div class="studio-callout"><strong>Same-Wi-Fi classroom</strong><p>Start a private session, then students open the link or scan its QR code from a tablet.</p></div>
+            <button id="btnStartSession" class="primary-wide">Start live classroom</button>
+            <div id="sessionCard" class="session-card hidden">
+                <span>Join code</span><strong id="sessionCode">—</strong>
+                <canvas id="sessionQr" width="180" height="180" aria-label="Classroom join QR code"></canvas>
+                <input id="sessionUrl" readonly aria-label="Classroom join link">
+                <div class="studio-actions"><button id="btnCopySession">Copy link</button><button id="btnShareBoard">Send current board</button><button id="btnStopSession" class="danger-button">End</button></div>
+            </div>
+        </section>
+        <section class="classroom-section" data-classroom-section="assess">
+            <div class="studio-row"><label>Prompt</label><textarea id="assessmentPrompt" rows="2" placeholder="What is the slope of y = 2x + 3?"></textarea></div>
+            <div class="studio-row"><label>Answers</label><input id="assessmentOptions" value="1, 2, 3, 4" placeholder="Comma-separated choices"></div>
+            <label class="studio-check"><input type="checkbox" id="assessmentAnonymous" checked> Display responses anonymously</label>
+            <div class="studio-actions"><button id="btnLaunchPoll">Launch poll</button><button id="btnExitTicket">Exit ticket</button><button id="btnRevealAnswers">Reveal answer layer</button></div>
+            <div id="assessmentResults" class="assessment-results"><span>No responses yet.</span></div>
+        </section>
+        <section class="classroom-section" data-classroom-section="lesson">
+            <div class="template-grid">
+                <button data-template="blank"><strong>Blank board</strong><span>Fresh teaching space</span></button>
+                <button data-template="grid"><strong>Grid lesson</strong><span>Graph and coordinate work</span></button>
+                <button data-template="coordinate"><strong>Coordinate plane</strong><span>Ready-to-teach axes</span></button>
+                <button data-template="exit"><strong>Exit ticket</strong><span>Prompt and answer area</span></button>
+            </div>
+            <div class="history-heading"><strong>Version history</strong><button id="btnSaveVersion">Save version now</button></div>
+            <div id="versionList" class="version-list"></div>
+        </section>
+    </aside>
+
+    <aside id="mathSuggestion" class="math-suggestion hidden" role="status" aria-live="polite">
+        <div class="suggestion-mark">✦</div>
+        <div class="suggestion-copy">
+            <span>Smart Math</span>
+            <strong id="mathSuggestionTitle">Visualization available</strong>
+            <p id="mathSuggestionText"></p>
+        </div>
+        <button id="mathSuggestionAction" class="suggestion-action">Preview</button>
+        <button id="mathSuggestionDismiss" class="suggestion-dismiss" title="Dismiss suggestion" aria-label="Dismiss suggestion">×</button>
+    </aside>
+
+    <div id="timerWidget" class="timer-widget hidden" role="timer" aria-label="Countdown timer">
+        <span id="timerText" aria-live="polite">00:00</span>
+        <button id="tPlus1">+1m</button><button id="tPlus5">+5m</button>
+        <button id="tStart">▶</button><button id="tReset">↺</button><button id="tClose">✕</button>
+    </div>
+    <div id="appStatus" class="app-status hidden" role="status" aria-live="polite"></div>
+    <div id="saveStatus" class="save-status" role="status" aria-live="polite">Local recovery not saved yet</div>
+    <div id="watermark"><b>BoardFlow</b> By FadFlow</div>
+    <div id="fileContextMenu" class="context-menu hidden" role="menu" aria-label="Uploaded file actions">
+        <button type="button" data-file-action="delete" role="menuitem">Delete</button>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf,image/*,.boardview,.json" hidden>
+    <nav id="classroomRail" class="hidden" aria-label="Teaching mode and recognition tools">
+        <select id="modeSelect" class="hud-select" title="Switch between teacher and student workspaces" aria-label="Workspace mode">
+            <option value="teacher">🧑‍🏫 Teacher</option>
+            <option value="student">🎓 Student</option>
+        </select>
+        <select id="layerSelect" class="hud-select" title="Choose where new work is placed" aria-label="Active layer">
+            <option value="lesson">▤ Lesson</option>
+            <option value="teacher">✎ Teacher ink</option>
+            <option value="student">✍ Student work</option>
+            <option value="answers">✓ Answers</option>
+        </select>
+        <button id="btnClassroomRail" title="Open Classroom Studio">◆<span>Studio</span></button>
+    </nav>
+</div>
+<div id="subjectDeleteDialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="subjectDeleteTitle">
+    <div class="modal-box">
+        <h4 id="subjectDeleteTitle">Delete subject</h4>
+        <p id="subjectDeleteText"></p>
+        <input type="text" autocomplete="username" hidden>
+        <form onsubmit="event.preventDefault();" style="display:contents;">
+            <input id="subjectDeletePassword" type="password" class="hidden" placeholder="Deletion password" autocomplete="current-password">
+        </form>
+        <p id="subjectDeleteError" class="dialog-error hidden" role="alert">Incorrect password. Please try again.</p>
+        <div class="modal-actions">
+            <button id="subjectDeleteCancel">Cancel</button><button id="subjectDeleteConfirm" class="danger-button">Delete subject</button>
+        </div>
+    </div>
+</div>
+<div id="equationDialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="equationDialogTitle">
+    <div class="modal-box equation-box">
+        <h4 id="equationDialogTitle">Recognize handwriting</h4>
+        <p>BoardFlow made a local suggestion from the selected ink. Correct it before inserting—the original handwriting stays untouched.</p>
+        <label>Recognized text <input id="recognizedEquation" type="text" spellcheck="false" placeholder="e.g. y = 2*x + 3"></label>
+        <label>LaTeX <input id="recognizedLatex" type="text" spellcheck="false" placeholder="e.g. y = 2x + 3"></label>
+        <p id="recognitionConfidence" class="recognition-note"></p>
+        <div class="modal-actions recognition-actions"><button id="equationCancel">Keep ink</button><button id="recognizedTextInsert">Convert to text</button><button id="equationInsert">Convert to equation</button><button id="equationGraph" class="accent-button">Equation + graph</button></div>
+    </div>
+</div>
+<div id="studentAssessment" class="student-assessment hidden" role="dialog" aria-live="polite">
+    <span>Live question</span><h3 id="studentQuestion"></h3><div id="studentChoices"></div>
+    <textarea id="studentTextAnswer" class="hidden" placeholder="Type your answer"></textarea>
+    <button id="studentSubmit" class="accent-button">Send answer</button>
+</div>
+<div id="geometryToolRail" class="hidden" aria-label="Geometry tools">
+    <button type="button" data-geometry-tool="pairs" title="Supplementary and complementary angles" aria-label="Supplementary and complementary angles">∠</button>
+    <button type="button" data-geometry-tool="vertical" title="Vertically opposite angles" aria-label="Vertically opposite angles">↔</button>
+    <button type="button" data-geometry-tool="parallel" title="Parallel-line transversal relationships" aria-label="Parallel-line transversal relationships">∥</button>
+    <button type="button" data-geometry-tool="triangle" title="Triangle angle sum" aria-label="Triangle angle sum">△</button>
+    <button type="button" data-geometry-tool="exercise" title="Missing-angle exercise" aria-label="Missing-angle exercise">?</button>
+    <button type="button" data-geometry-tool="trig" title="Sine, cosine, and tangent" aria-label="Sine, cosine, and tangent">sin</button>
+    <button type="button" data-geometry-tool="pythagoras" title="Pythagoras theorem" aria-label="Pythagoras theorem">√</button>
+    <button type="button" data-geometry-tool="area" title="Perimeter and area" aria-label="Perimeter and area">▱</button>
+    <button type="button" data-geometry-tool="measure" title="Interactive angle measurement" aria-label="Interactive angle measurement">⌒</button>
+</div>
+<div id="geometryInsight" class="hidden" role="status" aria-live="polite"><h4>Geometry Insight</h4><p></p></div>
+
+<div id="dialog" class="modal hidden">
+    <div class="modal-box">
+        <p id="saveDialogText">Export the board as a PNG before closing? Your editable lesson is autosaved for recovery.</p>
+        <div class="modal-actions">
+            <button id="dlgSave">Export PNG</button><button id="dlgDont">Close (autosaved)</button><button id="dlgCancel">Cancel</button>
+        </div>
+    </div>
+</div>
+<script type="module" src="./app.js"></script>
+<dialog id="smartEquationEditor" aria-labelledby="smartEquationTitle" style="border:1px solid #64748b;border-radius:18px;padding:24px;background:#172033;color:#fff;width:min(520px,85vw)">
+    <h2 id="smartEquationTitle">Edit equation</h2>
+    <p>The linked graph updates when you apply the change. Undo restores both.</p>
+    <label for="smartEquationValue">Equation or LaTeX</label>
+    <textarea id="smartEquationValue" rows="3" style="display:block;width:100%;margin:12px 0" maxlength="1000"></textarea>
+    <p id="smartEquationError" role="status"></p>
+    <button id="smartEquationCancel">Cancel</button>
+    <button id="smartEquationRewrite">Rewrite with pen</button>
+    <button id="smartEquationApply">Apply</button>
+</dialog>
+</body>
+</html>
